@@ -9,6 +9,9 @@ from shapely.ops import unary_union
 from pykrige.ok import OrdinaryKriging
 import plotly.express as px
 import gdown
+import requests
+from requests.auth import HTTPBasicAuth
+
 
 st.set_page_config(page_title="Kerala Pollution Dashboard — Kriging & AI Assistant", layout="wide")
 
