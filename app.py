@@ -366,3 +366,46 @@ def planet_search_by_date(token, aoi, start_date, end_date):
         st.error(f"Search error: {resp.text}")
         return None
 
+
+# -------------------------
+# PLANET AUTH
+# -------------------------
+PLANET_AUTH_URL = "https://api.planet.com/oauth/token"
+
+def planet_authenticate(client_id, client_secret):
+    """Get OAuth2 token from Planet using client credentials."""
+    try:
+        resp = requests.post(
+            PLANET_AUTH_URL,
+            data={"grant_type": "client_credentials"},
+            auth=HTTPBasicAuth(client_id, client_secret),
+            timeout=20
+        )
+        if resp.status_code == 200:
+            return resp.json().get("access_token")
+        else:
+            # return None and let caller show error to user
+            return None
+    except Exception as e:
+        # don't crash the app; return None
+        return None
+
+
+st.sidebar.header("Controls")
+
+# -------------------------
+# PLANET API LOGIN (sidebar)
+# -------------------------
+st.sidebar.subheader("🌍 Planet API Login")
+client_id = st.sidebar.text_input("Planet Client ID", type="password", help="Enter Planet Client ID")
+client_secret = st.sidebar.text_input("Planet Client Secret", type="password", help="Enter Planet Client Secret")
+
+if st.sidebar.button("Login to Planet API"):
+    token = planet_authenticate(client_id, client_secret)
+    if token:
+        st.session_state["planet_token"] = token
+        st.sidebar.success("Planet login OK — token stored in session")
+    else:
+        st.sidebar.error("Planet login failed — check credentials")
+
+
