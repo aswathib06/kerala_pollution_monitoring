@@ -1,9 +1,8 @@
 streamlit==1.36.0
 pandas==2.2.2
-numpy==1.26.4
-plotly==5.22.0
-pykrige==1.7.0
-shapely==2.0.4
-requests==2.32.3
-gdown==5.1.0
+numpy
+plotly
+folium
+shapely==1.8.5.post1
+pyproj-lite
 
