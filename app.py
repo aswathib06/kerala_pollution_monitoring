@@ -284,3 +284,29 @@ elif view_mode == "Yearly Heatmap Animation (2018–2025)":
                             height=750, color_continuous_scale="Turbo")
     fig.update_layout(mapbox_style="open-street-map")
     st.plotly_chart(fig, use_container_width=True)
+
+
+# -------------------------
+# PLANET API ACCESS MODULE
+# -------------------------
+
+PLANET_AUTH_URL = "https://api.planet.com/oauth/token"
+
+def planet_authenticate(client_id, client_secret):
+    """Get OAuth access token from Planet API"""
+    try:
+        resp = requests.post(
+            PLANET_AUTH_URL,
+            data={"grant_type": "client_credentials"},
+            auth=HTTPBasicAuth(client_id, client_secret)
+        )
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            return token
+        else:
+            st.error(f"Planet Auth Error: {resp.text}")
+            return None
+    except Exception as e:
+        st.error(f"Planet authentication exception: {e}")
+        return None
+
