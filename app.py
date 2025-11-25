@@ -286,27 +286,42 @@ elif view_mode == "Yearly Heatmap Animation (2018–2025)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# -------------------------
-# PLANET API ACCESS MODULE
-# -------------------------
+def planet_search_by_date(token, aoi, start_date, end_date):
+    url = "https://api.planet.com/data/v1/quick-search"
+    headers = {"Authorization": f"Bearer {token}"}
 
-PLANET_AUTH_URL = "https://api.planet.com/oauth/token"
+    payload = {
+        "item_types": ["PSScene"],
+        "filter": {
+            "type": "AndFilter",
+            "config": [
+                {
+                    "type": "GeometryFilter",
+                    "field_name": "geometry",
+                    "config": aoi
+                },
+                {
+                    "type": "DateRangeFilter",
+                    "field_name": "acquired",
+                    "config": {
+                        "gte": f"{start_date}T00:00:00Z",
+                        "lte": f"{end_date}T23:59:59Z"
+                    }
+                },
+                {
+                    "type": "RangeFilter",
+                    "field_name": "cloud_cover",
+                    "config": {"lte": 20}
+                }
+            ]
+        }
+    }
 
-def planet_authenticate(client_id, client_secret):
-    """Get OAuth access token from Planet API"""
-    try:
-        resp = requests.post(
-            PLANET_AUTH_URL,
-            data={"grant_type": "client_credentials"},
-            auth=HTTPBasicAuth(client_id, client_secret)
-        )
-        if resp.status_code == 200:
-            token = resp.json().get("access_token")
-            return token
-        else:
-            st.error(f"Planet Auth Error: {resp.text}")
-            return None
-    except Exception as e:
-        st.error(f"Planet authentication exception: {e}")
+    resp = requests.post(url, json=payload, headers=headers)
+
+    if resp.status_code == 200:
+        return resp.json()
+    else:
+        st.error(f"Search error: {resp.text}")
         return None
 
