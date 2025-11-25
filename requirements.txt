@@ -1,2 +1,12 @@
+streamlit==1.36.0
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.11.2
+pykrige==1.6.1
+shapely==1.8.5.post1
+plotly==5.16.0
+folium==0.14.0
+requests==2.31.0
+gdown==4.6.0
 
 
