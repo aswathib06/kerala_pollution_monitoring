@@ -14,6 +14,47 @@ from requests.auth import HTTPBasicAuth
 
 
 st.set_page_config(page_title="Kerala Pollution Dashboard — Kriging & AI Assistant", layout="wide")
+st.subheader("🌍 Search Planet Imagery (Kerala)")
+
+if "planet_token" not in st.session_state:
+    st.info("Login to Planet API using the sidebar.")
+else:
+    # Kerala Bounding Box AOI
+    kerala_aoi = {
+        "type": "Polygon",
+        "coordinates": [[
+            [74.5, 7.8],
+            [77.5, 7.8],
+            [77.5, 12.9],
+            [74.5, 12.9],
+            [74.5, 7.8]
+        ]]
+    }
+
+    # Date range selection
+    start_date = st.date_input("Start date")
+    end_date = st.date_input("End date")
+
+    if st.button("Search Kerala Imagery"):
+        with st.spinner("Searching satellite images..."):
+            results = planet_search_by_date(
+                st.session_state["planet_token"],
+                kerala_aoi,
+                start_date,
+                end_date
+            )
+
+        if results and "features" in results:
+            st.success(f"Found {len(results['features'])} images")
+
+            for feat in results["features"]:
+                st.write("### Image ID:", feat["id"])
+                st.write("Acquired:", feat["properties"]["acquired"])
+                st.write("Cloud cover:", feat["properties"]["cloud_cover"])
+                st.write("---")
+        else:
+            st.warning("No images found for this date range.")
+
 
 # -------------------------
 # CONFIG
