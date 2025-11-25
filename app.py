@@ -12,49 +12,7 @@ import gdown
 import requests
 from requests.auth import HTTPBasicAuth
 
-
 st.set_page_config(page_title="Kerala Pollution Dashboard — Kriging & AI Assistant", layout="wide")
-st.subheader("🌍 Search Planet Imagery (Kerala)")
-
-if "planet_token" not in st.session_state:
-    st.info("Login to Planet API using the sidebar.")
-else:
-    # Kerala Bounding Box AOI
-    kerala_aoi = {
-        "type": "Polygon",
-        "coordinates": [[
-            [74.5, 7.8],
-            [77.5, 7.8],
-            [77.5, 12.9],
-            [74.5, 12.9],
-            [74.5, 7.8]
-        ]]
-    }
-
-    # Date range selection
-    start_date = st.date_input("Start date")
-    end_date = st.date_input("End date")
-
-    if st.button("Search Kerala Imagery"):
-        with st.spinner("Searching satellite images..."):
-            results = planet_search_by_date(
-                st.session_state["planet_token"],
-                kerala_aoi,
-                start_date,
-                end_date
-            )
-
-        if results and "features" in results:
-            st.success(f"Found {len(results['features'])} images")
-
-            for feat in results["features"]:
-                st.write("### Image ID:", feat["id"])
-                st.write("Acquired:", feat["properties"]["acquired"])
-                st.write("Cloud cover:", feat["properties"]["cloud_cover"])
-                st.write("---")
-        else:
-            st.warning("No images found for this date range.")
-
 
 # -------------------------
 # CONFIG
@@ -64,7 +22,7 @@ LOCAL_DATA_PATHS = [
     "/mnt/data/Ernakulam_Daily_AQI_2018_2024_with_LatLon.csv",
     "/mnt/data/Kerala_S5P_Cleaned_2018_2025.csv"
 ]
-DATA_URL = "https://drive.google.com/uc?id=1M6I2ku_aWGkWz0GypktKXeRJPjNhlsM2"  
+DATA_URL = "https://drive.google.com/uc?id=1M6I2ku_aWGkWz0GypktKXeRJPjNhlsM2"
 LOCAL_FILE = "kerala_pollution.csv"
 
 BOUNDARY_PATH = "kerala_boundary.geojson"
@@ -72,6 +30,68 @@ GITHUB_RAW_BOUNDARY = "https://raw.githubusercontent.com/Abhinand-1/air_pollutio
 
 DEFAULT_SAMPLE = 1000
 DEFAULT_GRID = 60
+
+# -------------------------
+# PLANET AUTH
+# -------------------------
+PLANET_AUTH_URL = "https://api.planet.com/oauth/token"
+
+def planet_authenticate(client_id, client_secret):
+    """Get OAuth2 token from Planet using client credentials."""
+    try:
+        resp = requests.post(
+            PLANET_AUTH_URL,
+            data={"grant_type": "client_credentials"},
+            auth=HTTPBasicAuth(client_id, client_secret),
+            timeout=20
+        )
+        if resp.status_code == 200:
+            return resp.json().get("access_token")
+        else:
+            # return None so caller can show message
+            return None
+    except Exception:
+        return None
+
+def planet_search_by_date(token, aoi, start_date, end_date, max_cloud=20):
+    """Quick-search Planet API for PSScene within AOI and date range.
+       start_date and end_date should be ISO strings (YYYY-MM-DD or full ISO)."""
+    url = "https://api.planet.com/data/v1/quick-search"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    payload = {
+        "item_types": ["PSScene"],
+        "filter": {
+            "type": "AndFilter",
+            "config": [
+                {
+                    "type": "GeometryFilter",
+                    "field_name": "geometry",
+                    "config": aoi
+                },
+                {
+                    "type": "DateRangeFilter",
+                    "field_name": "acquired",
+                    "config": {
+                        "gte": f"{start_date}T00:00:00Z",
+                        "lte": f"{end_date}T23:59:59Z"
+                    }
+                },
+                {
+                    "type": "RangeFilter",
+                    "field_name": "cloud_cover",
+                    "config": {"lte": max_cloud}
+                }
+            ]
+        }
+    }
+
+    resp = requests.post(url, json=payload, headers=headers)
+    if resp.status_code == 200:
+        return resp.json()
+    else:
+        # return None and let caller handle message
+        return {"error": resp.text, "status_code": resp.status_code}
 
 # -------------------------
 # DATA LOADING
@@ -118,7 +138,7 @@ def load_kerala_polygon():
             import urllib.request
             with urllib.request.urlopen(GITHUB_RAW_BOUNDARY) as resp:
                 gj = json.load(resp)
-    except:
+    except Exception:
         st.error("Boundary geojson missing.")
         st.stop()
 
@@ -202,6 +222,44 @@ grid_res = st.sidebar.slider("Grid resolution", 40, 120, DEFAULT_GRID)
 variogram_model = st.sidebar.selectbox("Variogram model", ["spherical","exponential","gaussian"])
 use_log = st.sidebar.checkbox("Log-transform pollutant", value=False)
 
+# -------------------------
+# PLANET API LOGIN (sidebar)
+# -------------------------
+st.sidebar.subheader("🌍 Planet API Login")
+
+# prefer secrets for deployment; fall back to user input
+_secrets_client = None
+_secrets_secret = None
+try:
+    _secrets_client = st.secrets["PLANET_CLIENT_ID"]
+    _secrets_secret = st.secrets["PLANET_CLIENT_SECRET"]
+except Exception:
+    pass
+
+client_id_input = st.sidebar.text_input("Planet Client ID (only if not using secrets)", type="password", help="If running locally you can paste your client ID here.")
+client_secret_input = st.sidebar.text_input("Planet Client Secret (only if not using secrets)", type="password", help="If running locally you can paste your client secret here.")
+
+use_secrets = _secrets_client and _secrets_secret
+
+if use_secrets:
+    st.sidebar.caption("Using Streamlit secrets for Planet credentials.")
+    client_id = _secrets_client
+    client_secret = _secrets_secret
+else:
+    client_id = client_id_input
+    client_secret = client_secret_input
+
+if st.sidebar.button("Login to Planet API"):
+    if not client_id or not client_secret:
+        st.sidebar.error("Provide client id & secret (or set them in Streamlit secrets).")
+    else:
+        token = planet_authenticate(client_id, client_secret)
+        if token:
+            st.session_state["planet_token"] = token
+            st.sidebar.success("Planet login OK — token stored in session")
+        else:
+            st.sidebar.error("Planet login failed — check credentials")
+
 # ---------------------------------------------------
 # 🧠 GEN-AI STYLE QUESTION ANSWERING MODULE
 # ---------------------------------------------------
@@ -281,6 +339,57 @@ if user_question:
     st.info(answer_pollution_question(user_question, df_slice))
 
 # -------------------------
+# PLANET SEARCH UI (placed after function definitions)
+# -------------------------
+st.subheader("🌍 Search Planet Imagery (Kerala)")
+
+if "planet_token" not in st.session_state:
+    st.info("Login to Planet API using the sidebar.")
+else:
+    # Kerala Bounding Box AOI
+    kerala_aoi = {
+        "type": "Polygon",
+        "coordinates": [[
+            [74.5, 7.8],
+            [77.5, 7.8],
+            [77.5, 12.9],
+            [74.5, 12.9],
+            [74.5, 7.8]
+        ]]
+    }
+
+    # Date range selection
+    start_date = st.date_input("Start date")
+    end_date = st.date_input("End date")
+
+    if st.button("Search Kerala Imagery"):
+        if start_date > end_date:
+            st.error("Start date must be before or equal to end date.")
+        else:
+            with st.spinner("Searching satellite images..."):
+                results = planet_search_by_date(
+                    st.session_state["planet_token"],
+                    kerala_aoi,
+                    start_date.isoformat(),
+                    end_date.isoformat()
+                )
+
+            if results is None:
+                st.error("Search failed (no response).")
+            elif "error" in results:
+                st.error(f"Search error (http {results.get('status_code')}): {results.get('error')}")
+            elif "features" in results:
+                st.success(f"Found {len(results['features'])} images")
+                for feat in results["features"]:
+                    props = feat.get("properties", {})
+                    st.write("### Image ID:", feat.get("id"))
+                    st.write("Acquired:", props.get("acquired"))
+                    st.write("Cloud cover:", props.get("cloud_cover"))
+                    st.write("---")
+            else:
+                st.warning("No images found for this date range.")
+
+# -------------------------
 # VISUAL MODES
 # -------------------------
 if view_mode == "Interactive Map":
@@ -325,87 +434,4 @@ elif view_mode == "Yearly Heatmap Animation (2018–2025)":
                             height=750, color_continuous_scale="Turbo")
     fig.update_layout(mapbox_style="open-street-map")
     st.plotly_chart(fig, use_container_width=True)
-
-
-def planet_search_by_date(token, aoi, start_date, end_date):
-    url = "https://api.planet.com/data/v1/quick-search"
-    headers = {"Authorization": f"Bearer {token}"}
-
-    payload = {
-        "item_types": ["PSScene"],
-        "filter": {
-            "type": "AndFilter",
-            "config": [
-                {
-                    "type": "GeometryFilter",
-                    "field_name": "geometry",
-                    "config": aoi
-                },
-                {
-                    "type": "DateRangeFilter",
-                    "field_name": "acquired",
-                    "config": {
-                        "gte": f"{start_date}T00:00:00Z",
-                        "lte": f"{end_date}T23:59:59Z"
-                    }
-                },
-                {
-                    "type": "RangeFilter",
-                    "field_name": "cloud_cover",
-                    "config": {"lte": 20}
-                }
-            ]
-        }
-    }
-
-    resp = requests.post(url, json=payload, headers=headers)
-
-    if resp.status_code == 200:
-        return resp.json()
-    else:
-        st.error(f"Search error: {resp.text}")
-        return None
-
-
-# -------------------------
-# PLANET AUTH
-# -------------------------
-PLANET_AUTH_URL = "https://api.planet.com/oauth/token"
-
-def planet_authenticate(client_id, client_secret):
-    """Get OAuth2 token from Planet using client credentials."""
-    try:
-        resp = requests.post(
-            PLANET_AUTH_URL,
-            data={"grant_type": "client_credentials"},
-            auth=HTTPBasicAuth(client_id, client_secret),
-            timeout=20
-        )
-        if resp.status_code == 200:
-            return resp.json().get("access_token")
-        else:
-            # return None and let caller show error to user
-            return None
-    except Exception as e:
-        # don't crash the app; return None
-        return None
-
-
-st.sidebar.header("Controls")
-
-# -------------------------
-# PLANET API LOGIN (sidebar)
-# -------------------------
-st.sidebar.subheader("🌍 Planet API Login")
-client_id = st.sidebar.text_input("Planet Client ID", type="password", help="Enter Planet Client ID")
-client_secret = st.sidebar.text_input("Planet Client Secret", type="password", help="Enter Planet Client Secret")
-
-if st.sidebar.button("Login to Planet API"):
-    token = planet_authenticate(client_id, client_secret)
-    if token:
-        st.session_state["planet_token"] = token
-        st.sidebar.success("Planet login OK — token stored in session")
-    else:
-        st.sidebar.error("Planet login failed — check credentials")
-
 
